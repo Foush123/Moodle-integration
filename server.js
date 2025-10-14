@@ -38,6 +38,11 @@ app.post('/api/register', async (req, res) => {
     checkParams.append('values[0]', username);
     const { data: existingUsers } = await postToMoodle(checkParams);
 
+    // Moodle can return { exception, errorcode, message } with HTTP 200
+    if (existingUsers && existingUsers.exception) {
+      return res.status(400).json({ error: existingUsers.message || 'Moodle lookup error', details: existingUsers });
+    }
+
     if (Array.isArray(existingUsers) && existingUsers.length > 0) {
       // Already present in Moodle user list
       return res.json({ created: false, user: existingUsers[0] });
@@ -58,11 +63,19 @@ app.post('/api/register', async (req, res) => {
 
     const { response: createResp, data: createData } = await postToMoodle(createParams);
 
+    // Treat Moodle JSON error objects as failures even with 200 status
+    if (createData && createData.exception) {
+      return res.status(400).json({ error: createData.message || 'Moodle error', details: createData });
+    }
     if (!createResp.ok) {
       return res.status(createResp.status).json({ error: createData?.message || 'Moodle error' });
     }
+    // Success shape is usually an array of { id: number }
+    if (!Array.isArray(createData) || createData.length === 0 || !createData[0]?.id) {
+      return res.status(500).json({ error: 'Unexpected Moodle response', details: createData });
+    }
 
-    return res.json({ created: true, result: createData });
+    return res.json({ created: true, id: createData[0].id });
   } catch (error) {
     console.error('Error creating Moodle user:', error);
     return res.status(500).json({ error: error.message });
