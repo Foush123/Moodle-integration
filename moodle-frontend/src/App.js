@@ -163,6 +163,9 @@ function Register() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed');
       // Auto sign-in after creating account (resolve full profile)
+      // Add a small delay to ensure user creation is complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       const loginRes = await fetch('http://localhost:5000/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -181,8 +184,8 @@ function Register() {
         setSuccess('Account created and signed in');
         setTimeout(() => navigate('/'), 1000);
       } else {
-        setSuccess('Account created. Please login.');
-        setTimeout(() => navigate('/login'), 1000);
+        setSuccess(`Account created. ${loginData?.error || 'Please login manually.'}`);
+        setTimeout(() => navigate('/login'), 2000);
       }
     } catch (err) {
       setError(err.message);

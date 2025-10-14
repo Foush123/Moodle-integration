@@ -219,7 +219,11 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ error: checkData.message || 'User lookup failed', details: checkData });
     }
     if (!Array.isArray(checkData) || checkData.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ 
+        error: `User '${username}' not found in Moodle. Please check the username or create the account first.`,
+        username: username,
+        hint: 'Make sure the user was created successfully in Moodle'
+      });
     }
 
     const user = checkData[0];
