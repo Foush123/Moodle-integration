@@ -157,6 +157,10 @@ function CourseDetails() {
   const [sections, setSections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [enrollUsername, setEnrollUsername] = useState('');
+  const [enrollRoleId, setEnrollRoleId] = useState('');
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollMessage, setEnrollMessage] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -190,6 +194,57 @@ function CourseDetails() {
         {error && <div style={{color:'#dc2626'}}>{error}</div>}
         {!loading && !error && (
           <div>
+            <div style={{marginBottom:16,padding:16,border:'1px solid #e5e7eb',borderRadius:14,background:'#fff'}}>
+              <div style={{fontWeight:600,marginBottom:8}}>Enroll a user into this course</div>
+              <div style={{display:'grid',gap:8,gridTemplateColumns:'1fr 180px 140px'}}>
+                <input
+                  placeholder="Username"
+                  value={enrollUsername}
+                  onChange={(e) => setEnrollUsername(e.target.value)}
+                  style={{padding:10,border:'1px solid #e5e7eb',borderRadius:10}}
+                />
+                <input
+                  placeholder="Role ID (default 5)"
+                  value={enrollRoleId}
+                  onChange={(e) => setEnrollRoleId(e.target.value)}
+                  style={{padding:10,border:'1px solid #e5e7eb',borderRadius:10}}
+                />
+                <button
+                  onClick={async () => {
+                    setEnrollMessage('');
+                    if (!enrollUsername) {
+                      setEnrollMessage('Please enter a username');
+                      return;
+                    }
+                    try {
+                      setEnrolling(true);
+                      const body = {
+                        username: enrollUsername,
+                        courseid: Number(id),
+                      };
+                      if (enrollRoleId) body.roleid = Number(enrollRoleId);
+                      const res = await fetch('http://localhost:5000/api/enroll', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data?.error || 'Enrollment failed');
+                      setEnrollMessage(`Enrolled: user ${data.userid} into course ${data.courseid} (role ${data.roleid})`);
+                    } catch (e) {
+                      setEnrollMessage(`Error: ${e.message}`);
+                    } finally {
+                      setEnrolling(false);
+                    }
+                  }}
+                  disabled={enrolling}
+                  style={{background:'#2563eb',color:'#fff',padding:'10px 12px',border:'none',borderRadius:10,cursor:'pointer'}}
+                >
+                  {enrolling ? 'Enrolling…' : 'Enroll user'}
+                </button>
+              </div>
+              {enrollMessage && <div style={{marginTop:8,color: enrollMessage.startsWith('Error:') ? '#dc2626' : '#16a34a'}}>{enrollMessage}</div>}
+            </div>
             {sections.map((section) => (
               <div key={section.id} style={{marginBottom:16,border:'1px solid #e5e7eb',borderRadius:14,padding:16}}>
                 <div style={{fontWeight:600,marginBottom:8}}>{section.name || `Section ${section.section}`}</div>
