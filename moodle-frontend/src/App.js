@@ -219,6 +219,9 @@ function Login() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [service, setService] = useState(localStorage.getItem('moodleService') || '');
+  const [useTokenMode, setUseTokenMode] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -227,10 +230,31 @@ function Login() {
     setSubmitting(true);
     setError('');
     try {
+      if (useTokenMode) {
+        const res = await fetch('http://localhost:5000/api/login-with-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: tokenInput.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Token login failed');
+        setStoredUser({
+          id: data?.user?.userid || data?.user?.id,
+          username: data?.user?.username,
+          firstname: data?.user?.firstname,
+          lastname: data?.user?.lastname,
+          token: data?.token,
+        });
+        navigate('/');
+        return;
+      }
+
+      const payload = { username: username.trim().toLowerCase(), password };
+      if (service.trim()) payload.service = service.trim();
       const res = await fetch('http://localhost:5000/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim().toLowerCase(), password }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Login failed');
@@ -242,6 +266,7 @@ function Login() {
         lastname: data?.user?.lastname,
         token: data?.token,
       });
+      if (service.trim()) localStorage.setItem('moodleService', service.trim());
       navigate('/');
     } catch (err) {
       setError(err.message);
@@ -257,12 +282,23 @@ function Login() {
         <h2 style={{marginTop:0}}>Login</h2>
         <form onSubmit={onSubmit}>
           <div style={{display:'grid',gap:12}}>
-            <input value={username} onChange={(e)=>setUsername(e.target.value)} placeholder="Username" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
-            <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Password" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              <input type="checkbox" checked={useTokenMode} onChange={(e)=>setUseTokenMode(e.target.checked)} />
+              <span>Login with token</span>
+            </label>
+            {!useTokenMode ? (
+              <>
+                <input value={username} onChange={(e)=>setUsername(e.target.value)} placeholder="Username" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
+                <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Password" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
+                <input value={service} onChange={(e)=>setService(e.target.value)} placeholder="Service (optional, e.g. moodle_mobile_app)" style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
+              </>
+            ) : (
+              <input value={tokenInput} onChange={(e)=>setTokenInput(e.target.value)} placeholder="Paste Moodle token" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
+            )}
           </div>
           {error && <div style={{color:'#dc2626',marginTop:10}}>{error}</div>}
           <button disabled={submitting} style={{marginTop:16,width:'100%',background:'#2563eb',color:'#fff',padding:'12px 14px',border:'none',borderRadius:10,cursor:'pointer'}}>
-            {submitting ? 'Signing in…' : 'Sign in'}
+            {submitting ? (useTokenMode ? 'Verifying token…' : 'Signing in…') : (useTokenMode ? 'Sign in with token' : 'Sign in')}
           </button>
         </form>
       </div>
