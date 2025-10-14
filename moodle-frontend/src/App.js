@@ -154,10 +154,11 @@ function Register() {
     setError('');
     setSuccess('');
     try {
+      const normalized = { ...form, username: form.username.trim().toLowerCase() };
       const res = await fetch('http://localhost:5000/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(normalized),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed');
@@ -165,7 +166,7 @@ function Register() {
       const loginRes = await fetch('http://localhost:5000/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: form.username }),
+        body: JSON.stringify({ username: normalized.username }),
       });
       const loginData = await loginRes.json();
       if (loginRes.ok) {
@@ -221,7 +222,7 @@ function Login() {
       const res = await fetch('http://localhost:5000/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ username: username.trim().toLowerCase() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Login failed');

@@ -13,7 +13,8 @@ const WS_TOKEN = 'a2cd2377ff57c4d85ee67c58544ee941';
 // Create Moodle user (idempotent by username)
 app.post('/api/register', async (req, res) => {
   try {
-    const { username, password, firstname, lastname, email } = req.body || {};
+    let { username, password, firstname, lastname, email } = req.body || {};
+    if (typeof username === 'string') username = username.trim().toLowerCase();
 
     if (!username || !password || !firstname || !lastname || !email) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -186,7 +187,8 @@ app.get('/api/moodle-siteinfo', async (req, res) => {
 // Lightweight login: resolves Moodle user by username (idempotent, no password check here)
 app.post('/api/login', async (req, res) => {
   try {
-    const { username } = req.body || {};
+    let { username } = req.body || {};
+    if (typeof username === 'string') username = username.trim().toLowerCase();
     if (!username) {
       return res.status(400).json({ error: 'Missing username' });
     }
@@ -221,7 +223,8 @@ app.post('/api/login', async (req, res) => {
 // Enroll a user into a Moodle course (manual enrol method)
 app.post('/api/enroll', async (req, res) => {
   try {
-    const { username, userid, courseid, roleid } = req.body || {};
+    let { username, userid, courseid, roleid } = req.body || {};
+    if (typeof username === 'string') username = username.trim().toLowerCase();
 
     if (!courseid) {
       return res.status(400).json({ error: 'Missing required field: courseid' });
