@@ -11,7 +11,7 @@ function Navbar() {
         <a href="#categories" style={{textDecoration:'none',color:'#0f172a'}}>Categories</a>
         <a href="#pricing" style={{textDecoration:'none',color:'#0f172a'}}>Pricing</a>
       </div>
-      <Link to="/register" style={{padding:'8px 14px',border:'2px solid #2b6ef2',borderRadius:10,color:'#2b6ef2',textDecoration:'none',fontWeight:600}}>Get started</Link>
+      <AuthActions />
     </div>
   );
 }
@@ -32,6 +32,34 @@ function setStoredUser(user) {
 }
 
 // Intentionally no explicit logout or login UI
+function clearStoredUser() {
+  try { localStorage.removeItem('currentUser'); } catch (_) {}
+}
+
+function AuthActions() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(getStoredUser());
+  useEffect(() => {
+    const onStorage = () => setUser(getStoredUser());
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+  if (user) {
+    return (
+      <div style={{display:'flex',gap:10,alignItems:'center'}}>
+        <Link to="/profile" style={{textDecoration:'none',color:'#0f172a'}}>Profile</Link>
+        <span style={{color:'#334155'}}>Hi, {user.firstname || user.username}</span>
+        <button onClick={() => { clearStoredUser(); setUser(null); navigate('/'); }} style={{padding:'8px 12px',border:'1px solid #e5e7eb',borderRadius:10,background:'#fff',cursor:'pointer'}}>Logout</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{display:'flex',gap:10}}>
+      <Link to="/login" style={{padding:'8px 12px',border:'1px solid #e5e7eb',borderRadius:10,color:'#0f172a',textDecoration:'none'}}>Login</Link>
+      <Link to="/register" style={{padding:'8px 14px',border:'2px solid #2b6ef2',borderRadius:10,color:'#2b6ef2',textDecoration:'none',fontWeight:600}}>Get started</Link>
+    </div>
+  );
+}
 
 function Hero() {
   return (
@@ -188,6 +216,64 @@ function Register() {
 }
 
 // Login UI removed per request
+function Login() {
+  const navigate = useNavigate();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [service, setService] = useState(localStorage.getItem('moodleService') || '');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      const payload = { username: username.trim().toLowerCase(), password };
+      if (service.trim()) payload.service = service.trim();
+      const res = await fetch('http://localhost:5000/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Login failed');
+      setStoredUser({
+        id: data?.user?.userid || data?.user?.id,
+        username: data?.user?.username,
+        firstname: data?.user?.firstname,
+        lastname: data?.user?.lastname,
+        token: data?.token,
+      });
+      if (service.trim()) localStorage.setItem('moodleService', service.trim());
+      navigate('/');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div>
+      <Navbar />
+      <div style={{maxWidth:420,margin:'32px auto',padding:24,border:'1px solid #e5e7eb',borderRadius:16,background:'#fff',boxShadow:'0 8px 20px rgba(0,0,0,0.05)'}}>
+        <h2 style={{marginTop:0}}>Login</h2>
+        <form onSubmit={onSubmit}>
+          <div style={{display:'grid',gap:12}}>
+            <input value={username} onChange={(e)=>setUsername(e.target.value)} placeholder="Username" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
+            <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Password" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
+            <input value={service} onChange={(e)=>setService(e.target.value)} placeholder="Service (optional)" style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
+          </div>
+          {error && <div style={{color:'#dc2626',marginTop:10}}>{error}</div>}
+          <button disabled={submitting} style={{marginTop:16,width:'100%',background:'#2563eb',color:'#fff',padding:'12px 14px',border:'none',borderRadius:10,cursor:'pointer'}}>
+            {submitting ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 function CourseDetails() {
   const { id } = useParams();
@@ -351,6 +437,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/courses/:id" element={<CourseDetails />} />
     </Routes>
