@@ -166,11 +166,18 @@ function Register() {
       const loginRes = await fetch('http://localhost:5000/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: normalized.username }),
+        // Use the same password the user registered with
+        body: JSON.stringify({ username: normalized.username, password: normalized.password }),
       });
       const loginData = await loginRes.json();
       if (loginRes.ok) {
-        setStoredUser(loginData);
+        setStoredUser({
+          id: loginData?.user?.userid || loginData?.user?.id,
+          username: loginData?.user?.username,
+          firstname: loginData?.user?.firstname,
+          lastname: loginData?.user?.lastname,
+          token: loginData?.token,
+        });
         setSuccess('Account created and signed in');
         setTimeout(() => navigate('/'), 1000);
       } else {
@@ -211,6 +218,7 @@ function Register() {
 function Login() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -222,11 +230,18 @@ function Login() {
       const res = await fetch('http://localhost:5000/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim().toLowerCase() }),
+        body: JSON.stringify({ username: username.trim().toLowerCase(), password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Login failed');
-      setStoredUser(data);
+      // Persist minimal user and token
+      setStoredUser({
+        id: data?.user?.userid || data?.user?.id,
+        username: data?.user?.username,
+        firstname: data?.user?.firstname,
+        lastname: data?.user?.lastname,
+        token: data?.token,
+      });
       navigate('/');
     } catch (err) {
       setError(err.message);
@@ -243,6 +258,7 @@ function Login() {
         <form onSubmit={onSubmit}>
           <div style={{display:'grid',gap:12}}>
             <input value={username} onChange={(e)=>setUsername(e.target.value)} placeholder="Username" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
+            <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Password" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
           </div>
           {error && <div style={{color:'#dc2626',marginTop:10}}>{error}</div>}
           <button disabled={submitting} style={{marginTop:16,width:'100%',background:'#2563eb',color:'#fff',padding:'12px 14px',border:'none',borderRadius:10,cursor:'pointer'}}>

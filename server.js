@@ -8,7 +8,10 @@ app.use(cors());
 app.use(express.json());
 
 const MOODLE_URL = 'http://localhost/moodle/webservice/rest/server.php';
+const MOODLE_TOKEN_URL = 'http://localhost/moodle/login/token.php';
 const WS_TOKEN = 'a2cd2377ff57c4d85ee67c58544ee941';
+// External service shortname to request user tokens. Ensure this service exists and includes needed functions
+const USER_SERVICE = 'moodle_mobile_app';
 
 // Create Moodle user (idempotent by username)
 app.post('/api/register', async (req, res) => {
@@ -187,33 +190,55 @@ app.get('/api/moodle-siteinfo', async (req, res) => {
 // Lightweight login: resolves Moodle user by username (idempotent, no password check here)
 app.post('/api/login', async (req, res) => {
   try {
-    let { username } = req.body || {};
+    let { username, password } = req.body || {};
     if (typeof username === 'string') username = username.trim().toLowerCase();
-    if (!username) {
-      return res.status(400).json({ error: 'Missing username' });
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Missing username or password' });
     }
-    const params = new URLSearchParams();
-    params.append('wstoken', WS_TOKEN);
-    params.append('wsfunction', 'core_user_get_users_by_field');
-    params.append('moodlewsrestformat', 'json');
-    params.append('field', 'username');
-    params.append('values[0]', username);
 
-    const response = await fetch(MOODLE_URL, {
+    // 1) Get user-specific token using Moodle token.php
+    const tokenParams = new URLSearchParams();
+    tokenParams.append('username', username);
+    tokenParams.append('password', password);
+    tokenParams.append('service', USER_SERVICE);
+
+    const tokenResp = await fetch(`${MOODLE_TOKEN_URL}?${tokenParams.toString()}`, { method: 'GET' });
+    const tokenData = await tokenResp.json().catch(async () => {
+      // token.php may return text/plain; try text parse for token key
+      const text = await tokenResp.text();
+      try { return JSON.parse(text); } catch (_) { return { raw: text }; }
+    });
+
+    if (!tokenResp.ok) {
+      return res.status(tokenResp.status).json({ error: tokenData?.error || 'Authentication failed', details: tokenData });
+    }
+    if (!tokenData || (!tokenData.token && !tokenData?.error)) {
+      return res.status(400).json({ error: 'Invalid response from Moodle token endpoint', details: tokenData });
+    }
+    if (tokenData.error) {
+      return res.status(401).json({ error: tokenData.error, details: tokenData });
+    }
+
+    const userToken = tokenData.token;
+
+    // 2) Use the user token to get site info (contains userid and username)
+    const siteParams = new URLSearchParams();
+    siteParams.append('wstoken', userToken);
+    siteParams.append('wsfunction', 'core_webservice_get_site_info');
+    siteParams.append('moodlewsrestformat', 'json');
+
+    const siteResp = await fetch(MOODLE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
+      body: siteParams.toString(),
     });
-    const data = await response.json();
-    if (data && data.exception) {
-      return res.status(400).json({ error: data.message, details: data });
+    const siteData = await siteResp.json();
+    if (siteData && siteData.exception) {
+      return res.status(400).json({ error: siteData.message || 'Failed to fetch site info', details: siteData });
     }
-    if (!Array.isArray(data) || data.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    // Return minimal profile
-    const u = data[0];
-    return res.json({ id: u.id, username: u.username, firstname: u.firstname, lastname: u.lastname, email: u.email });
+
+    // siteData typically includes userid, username, firstname, lastname, fullname, etc.
+    return res.json({ token: userToken, user: siteData });
   } catch (error) {
     console.error('Error during login:', error);
     res.status(500).json({ error: error.message });
