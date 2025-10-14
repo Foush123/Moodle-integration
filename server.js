@@ -183,6 +183,41 @@ app.get('/api/moodle-siteinfo', async (req, res) => {
   }
 });
 
+// Lightweight login: resolves Moodle user by username (idempotent, no password check here)
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username } = req.body || {};
+    if (!username) {
+      return res.status(400).json({ error: 'Missing username' });
+    }
+    const params = new URLSearchParams();
+    params.append('wstoken', WS_TOKEN);
+    params.append('wsfunction', 'core_user_get_users_by_field');
+    params.append('moodlewsrestformat', 'json');
+    params.append('field', 'username');
+    params.append('values[0]', username);
+
+    const response = await fetch(MOODLE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await response.json();
+    if (data && data.exception) {
+      return res.status(400).json({ error: data.message, details: data });
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    // Return minimal profile
+    const u = data[0];
+    return res.json({ id: u.id, username: u.username, firstname: u.firstname, lastname: u.lastname, email: u.email });
+  } catch (error) {
+    console.error('Error during login:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Enroll a user into a Moodle course (manual enrol method)
 app.post('/api/enroll', async (req, res) => {
   try {

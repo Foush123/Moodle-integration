@@ -11,6 +11,51 @@ function Navbar() {
         <a href="#categories" style={{textDecoration:'none',color:'#0f172a'}}>Categories</a>
         <a href="#pricing" style={{textDecoration:'none',color:'#0f172a'}}>Pricing</a>
       </div>
+      <AuthActions />
+    </div>
+  );
+}
+
+function getStoredUser() {
+  try {
+    const raw = localStorage.getItem('currentUser');
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function setStoredUser(user) {
+  try {
+    localStorage.setItem('currentUser', JSON.stringify(user));
+  } catch (_) {}
+}
+
+function clearStoredUser() {
+  try {
+    localStorage.removeItem('currentUser');
+  } catch (_) {}
+}
+
+function AuthActions() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(getStoredUser());
+  useEffect(() => {
+    const onStorage = () => setUser(getStoredUser());
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+  if (user) {
+    return (
+      <div style={{display:'flex',gap:10,alignItems:'center'}}>
+        <span style={{color:'#334155'}}>Hi, {user.firstname || user.username}</span>
+        <button onClick={() => { clearStoredUser(); setUser(null); navigate('/'); }} style={{padding:'8px 12px',border:'1px solid #e5e7eb',borderRadius:10,background:'#fff',cursor:'pointer'}}>Logout</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{display:'flex',gap:10}}>
+      <Link to="/login" style={{padding:'8px 12px',border:'1px solid #e5e7eb',borderRadius:10,color:'#0f172a',textDecoration:'none'}}>Login</Link>
       <Link to="/register" style={{padding:'8px 14px',border:'2px solid #2b6ef2',borderRadius:10,color:'#2b6ef2',textDecoration:'none',fontWeight:600}}>Get started</Link>
     </div>
   );
@@ -116,8 +161,21 @@ function Register() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed');
-      setSuccess('Account created successfully');
-      setTimeout(() => navigate('/'), 1200);
+      // Auto sign-in after creating account (resolve full profile)
+      const loginRes = await fetch('http://localhost:5000/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: form.username }),
+      });
+      const loginData = await loginRes.json();
+      if (loginRes.ok) {
+        setStoredUser(loginData);
+        setSuccess('Account created and signed in');
+        setTimeout(() => navigate('/'), 1000);
+      } else {
+        setSuccess('Account created. Please login.');
+        setTimeout(() => navigate('/login'), 1000);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -149,6 +207,52 @@ function Register() {
   );
 }
 
+function Login() {
+  const navigate = useNavigate();
+  const [username, setUsername] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch('http://localhost:5000/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Login failed');
+      setStoredUser(data);
+      navigate('/');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div>
+      <Navbar />
+      <div style={{maxWidth:420,margin:'32px auto',padding:24,border:'1px solid #e5e7eb',borderRadius:16,background:'#fff',boxShadow:'0 8px 20px rgba(0,0,0,0.05)'}}>
+        <h2 style={{marginTop:0}}>Login</h2>
+        <form onSubmit={onSubmit}>
+          <div style={{display:'grid',gap:12}}>
+            <input value={username} onChange={(e)=>setUsername(e.target.value)} placeholder="Username" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
+          </div>
+          {error && <div style={{color:'#dc2626',marginTop:10}}>{error}</div>}
+          <button disabled={submitting} style={{marginTop:16,width:'100%',background:'#2563eb',color:'#fff',padding:'12px 14px',border:'none',borderRadius:10,cursor:'pointer'}}>
+            {submitting ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function CourseDetails() {
   const { id } = useParams();
   const location = useLocation();
@@ -161,6 +265,7 @@ function CourseDetails() {
   const [enrollRoleId, setEnrollRoleId] = useState('');
   const [enrolling, setEnrolling] = useState(false);
   const [enrollMessage, setEnrollMessage] = useState('');
+  const [currentUser, setCurrentUser] = useState(getStoredUser());
 
   useEffect(() => {
     const load = async () => {
@@ -195,54 +300,45 @@ function CourseDetails() {
         {!loading && !error && (
           <div>
             <div style={{marginBottom:16,padding:16,border:'1px solid #e5e7eb',borderRadius:14,background:'#fff'}}>
-              <div style={{fontWeight:600,marginBottom:8}}>Enroll a user into this course</div>
-              <div style={{display:'grid',gap:8,gridTemplateColumns:'1fr 180px 140px'}}>
-                <input
-                  placeholder="Username"
-                  value={enrollUsername}
-                  onChange={(e) => setEnrollUsername(e.target.value)}
-                  style={{padding:10,border:'1px solid #e5e7eb',borderRadius:10}}
-                />
-                <input
-                  placeholder="Role ID (default 5)"
-                  value={enrollRoleId}
-                  onChange={(e) => setEnrollRoleId(e.target.value)}
-                  style={{padding:10,border:'1px solid #e5e7eb',borderRadius:10}}
-                />
-                <button
-                  onClick={async () => {
-                    setEnrollMessage('');
-                    if (!enrollUsername) {
-                      setEnrollMessage('Please enter a username');
-                      return;
-                    }
-                    try {
-                      setEnrolling(true);
-                      const body = {
-                        username: enrollUsername,
-                        courseid: Number(id),
-                      };
-                      if (enrollRoleId) body.roleid = Number(enrollRoleId);
-                      const res = await fetch('http://localhost:5000/api/enroll', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                      });
-                      const data = await res.json();
-                      if (!res.ok) throw new Error(data?.error || 'Enrollment failed');
-                      setEnrollMessage(`Enrolled: user ${data.userid} into course ${data.courseid} (role ${data.roleid})`);
-                    } catch (e) {
-                      setEnrollMessage(`Error: ${e.message}`);
-                    } finally {
-                      setEnrolling(false);
-                    }
-                  }}
-                  disabled={enrolling}
-                  style={{background:'#2563eb',color:'#fff',padding:'10px 12px',border:'none',borderRadius:10,cursor:'pointer'}}
-                >
-                  {enrolling ? 'Enrolling…' : 'Enroll user'}
-                </button>
-              </div>
+              <div style={{fontWeight:600,marginBottom:8}}>Enroll into this course</div>
+              {currentUser ? (
+                <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                  <button
+                    onClick={async () => {
+                      setEnrollMessage('');
+                      try {
+                        setEnrolling(true);
+                        const body = { username: currentUser.username, courseid: Number(id) };
+                        if (enrollRoleId) body.roleid = Number(enrollRoleId);
+                        const res = await fetch('http://localhost:5000/api/enroll', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(body),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data?.error || 'Enrollment failed');
+                        setEnrollMessage(`Enrolled: user ${data.userid} into course ${data.courseid} (role ${data.roleid})`);
+                      } catch (e) {
+                        setEnrollMessage(`Error: ${e.message}`);
+                      } finally {
+                        setEnrolling(false);
+                      }
+                    }}
+                    disabled={enrolling}
+                    style={{background:'#2563eb',color:'#fff',padding:'10px 12px',border:'none',borderRadius:10,cursor:'pointer'}}
+                  >
+                    {enrolling ? 'Enrolling…' : 'Enroll me'}
+                  </button>
+                  <input
+                    placeholder="Role ID (default 5)"
+                    value={enrollRoleId}
+                    onChange={(e) => setEnrollRoleId(e.target.value)}
+                    style={{padding:10,border:'1px solid #e5e7eb',borderRadius:10}}
+                  />
+                </div>
+              ) : (
+                <div style={{color:'#64748b'}}>Please <Link to="/login">login</Link> to enroll.</div>
+              )}
               {enrollMessage && <div style={{marginTop:8,color: enrollMessage.startsWith('Error:') ? '#dc2626' : '#16a34a'}}>{enrollMessage}</div>}
             </div>
             {sections.map((section) => (
@@ -273,6 +369,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/courses/:id" element={<CourseDetails />} />
     </Routes>
