@@ -11,7 +11,7 @@ function Navbar() {
         <a href="#categories" style={{textDecoration:'none',color:'#0f172a'}}>Categories</a>
         <a href="#pricing" style={{textDecoration:'none',color:'#0f172a'}}>Pricing</a>
       </div>
-      <AuthActions />
+      <Link to="/register" style={{padding:'8px 14px',border:'2px solid #2b6ef2',borderRadius:10,color:'#2b6ef2',textDecoration:'none',fontWeight:600}}>Get started</Link>
     </div>
   );
 }
@@ -31,35 +31,7 @@ function setStoredUser(user) {
   } catch (_) {}
 }
 
-function clearStoredUser() {
-  try {
-    localStorage.removeItem('currentUser');
-  } catch (_) {}
-}
-
-function AuthActions() {
-  const navigate = useNavigate();
-  const [user, setUser] = useState(getStoredUser());
-  useEffect(() => {
-    const onStorage = () => setUser(getStoredUser());
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
-  if (user) {
-    return (
-      <div style={{display:'flex',gap:10,alignItems:'center'}}>
-        <span style={{color:'#334155'}}>Hi, {user.firstname || user.username}</span>
-        <button onClick={() => { clearStoredUser(); setUser(null); navigate('/'); }} style={{padding:'8px 12px',border:'1px solid #e5e7eb',borderRadius:10,background:'#fff',cursor:'pointer'}}>Logout</button>
-      </div>
-    );
-  }
-  return (
-    <div style={{display:'flex',gap:10}}>
-      <Link to="/login" style={{padding:'8px 12px',border:'1px solid #e5e7eb',borderRadius:10,color:'#0f172a',textDecoration:'none'}}>Login</Link>
-      <Link to="/register" style={{padding:'8px 14px',border:'2px solid #2b6ef2',borderRadius:10,color:'#2b6ef2',textDecoration:'none',fontWeight:600}}>Get started</Link>
-    </div>
-  );
-}
+// Intentionally no explicit logout or login UI
 
 function Hero() {
   return (
@@ -215,96 +187,7 @@ function Register() {
   );
 }
 
-function Login() {
-  const navigate = useNavigate();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [service, setService] = useState(localStorage.getItem('moodleService') || '');
-  const [useTokenMode, setUseTokenMode] = useState(false);
-  const [tokenInput, setTokenInput] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError('');
-    try {
-      if (useTokenMode) {
-        const res = await fetch('http://localhost:5000/api/login-with-token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: tokenInput.trim() }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || 'Token login failed');
-        setStoredUser({
-          id: data?.user?.userid || data?.user?.id,
-          username: data?.user?.username,
-          firstname: data?.user?.firstname,
-          lastname: data?.user?.lastname,
-          token: data?.token,
-        });
-        navigate('/');
-        return;
-      }
-
-      const payload = { username: username.trim().toLowerCase(), password };
-      if (service.trim()) payload.service = service.trim();
-      const res = await fetch('http://localhost:5000/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Login failed');
-      // Persist minimal user and token
-      setStoredUser({
-        id: data?.user?.userid || data?.user?.id,
-        username: data?.user?.username,
-        firstname: data?.user?.firstname,
-        lastname: data?.user?.lastname,
-        token: data?.token,
-      });
-      if (service.trim()) localStorage.setItem('moodleService', service.trim());
-      navigate('/');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div>
-      <Navbar />
-      <div style={{maxWidth:420,margin:'32px auto',padding:24,border:'1px solid #e5e7eb',borderRadius:16,background:'#fff',boxShadow:'0 8px 20px rgba(0,0,0,0.05)'}}>
-        <h2 style={{marginTop:0}}>Login</h2>
-        <form onSubmit={onSubmit}>
-          <div style={{display:'grid',gap:12}}>
-            <label style={{display:'flex',alignItems:'center',gap:8}}>
-              <input type="checkbox" checked={useTokenMode} onChange={(e)=>setUseTokenMode(e.target.checked)} />
-              <span>Login with token</span>
-            </label>
-            {!useTokenMode ? (
-              <>
-                <input value={username} onChange={(e)=>setUsername(e.target.value)} placeholder="Username" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
-                <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Password" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
-                <input value={service} onChange={(e)=>setService(e.target.value)} placeholder="Service (optional, e.g. moodle_mobile_app)" style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
-              </>
-            ) : (
-              <input value={tokenInput} onChange={(e)=>setTokenInput(e.target.value)} placeholder="Paste Moodle token" required style={{padding:12,borderRadius:10,border:'1px solid #e5e7eb'}} />
-            )}
-          </div>
-          {error && <div style={{color:'#dc2626',marginTop:10}}>{error}</div>}
-          <button disabled={submitting} style={{marginTop:16,width:'100%',background:'#2563eb',color:'#fff',padding:'12px 14px',border:'none',borderRadius:10,cursor:'pointer'}}>
-            {submitting ? (useTokenMode ? 'Verifying token…' : 'Signing in…') : (useTokenMode ? 'Sign in with token' : 'Sign in')}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
+// Login UI removed per request
 
 function CourseDetails() {
   const { id } = useParams();
@@ -390,7 +273,53 @@ function CourseDetails() {
                   />
                 </div>
               ) : (
-                <div style={{color:'#64748b'}}>Please <Link to="/login">login</Link> to enroll.</div>
+                <div style={{display:'grid',gap:8,gridTemplateColumns:'1fr 180px 140px'}}>
+                  <input
+                    placeholder="Username"
+                    value={enrollUsername}
+                    onChange={(e) => setEnrollUsername(e.target.value)}
+                    style={{padding:10,border:'1px solid #e5e7eb',borderRadius:10}}
+                  />
+                  <input
+                    placeholder="Role ID (default 5)"
+                    value={enrollRoleId}
+                    onChange={(e) => setEnrollRoleId(e.target.value)}
+                    style={{padding:10,border:'1px solid #e5e7eb',borderRadius:10}}
+                  />
+                  <button
+                    onClick={async () => {
+                      setEnrollMessage('');
+                      if (!enrollUsername) {
+                        setEnrollMessage('Please enter a username');
+                        return;
+                      }
+                      try {
+                        setEnrolling(true);
+                        const body = {
+                          username: enrollUsername.trim().toLowerCase(),
+                          courseid: Number(id),
+                        };
+                        if (enrollRoleId) body.roleid = Number(enrollRoleId);
+                        const res = await fetch('http://localhost:5000/api/enroll', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(body),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data?.error || 'Enrollment failed');
+                        setEnrollMessage(`Enrolled: user ${data.userid} into course ${data.courseid} (role ${data.roleid})`);
+                      } catch (e) {
+                        setEnrollMessage(`Error: ${e.message}`);
+                      } finally {
+                        setEnrolling(false);
+                      }
+                    }}
+                    disabled={enrolling}
+                    style={{background:'#2563eb',color:'#fff',padding:'10px 12px',border:'none',borderRadius:10,cursor:'pointer'}}
+                  >
+                    {enrolling ? 'Enrolling…' : 'Enroll user'}
+                  </button>
+                </div>
               )}
               {enrollMessage && <div style={{marginTop:8,color: enrollMessage.startsWith('Error:') ? '#dc2626' : '#16a34a'}}>{enrollMessage}</div>}
             </div>
@@ -422,7 +351,6 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/courses/:id" element={<CourseDetails />} />
     </Routes>
