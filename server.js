@@ -10,7 +10,7 @@ app.use(express.json());
 const MOODLE_URL = 'http://localhost/moodle/webservice/rest/server.php';
 const WS_TOKEN = 'a2cd2377ff57c4d85ee67c58544ee941';
 
-// Create Moodle user
+// Create Moodle user (idempotent by username)
 app.post('/api/register', async (req, res) => {
   try {
     const { username, password, firstname, lastname, email } = req.body || {};
@@ -18,34 +18,51 @@ app.post('/api/register', async (req, res) => {
     if (!username || !password || !firstname || !lastname || !email) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+    // Helper to POST form-encoded to Moodle
+    const postToMoodle = async (formParams) => {
+      const response = await fetch(MOODLE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formParams.toString(),
+      });
+      const data = await response.json();
+      return { response, data };
+    };
 
-    const params = new URLSearchParams();
-    params.append('wstoken', WS_TOKEN);
-    params.append('wsfunction', 'core_user_create_users');
-    params.append('moodlewsrestformat', 'json');
-    // users[0][field]=value format required by Moodle
-    params.append('users[0][username]', username);
-    params.append('users[0][password]', password);
-    params.append('users[0][firstname]', firstname);
-    params.append('users[0][lastname]', lastname);
-    params.append('users[0][email]', email);
+    // 1) Check if user already exists by username
+    const checkParams = new URLSearchParams();
+    checkParams.append('wstoken', WS_TOKEN);
+    checkParams.append('wsfunction', 'core_user_get_users_by_field');
+    checkParams.append('moodlewsrestformat', 'json');
+    checkParams.append('field', 'username');
+    checkParams.append('values[0]', username);
+    const { data: existingUsers } = await postToMoodle(checkParams);
 
-    const response = await fetch(MOODLE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: params.toString(),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(response.status).json({ error: data?.message || 'Moodle error' });
+    if (Array.isArray(existingUsers) && existingUsers.length > 0) {
+      // Already present in Moodle user list
+      return res.json({ created: false, user: existingUsers[0] });
     }
 
-    // Moodle returns created user ids or an error structure
-    return res.json(data);
+    // 2) Create user when not found
+    const createParams = new URLSearchParams();
+    createParams.append('wstoken', WS_TOKEN);
+    createParams.append('wsfunction', 'core_user_create_users');
+    createParams.append('moodlewsrestformat', 'json');
+    // users[0][field]=value format required by Moodle
+    createParams.append('users[0][username]', username);
+    createParams.append('users[0][password]', password); // Requires manual auth policy
+    createParams.append('users[0][firstname]', firstname);
+    createParams.append('users[0][lastname]', lastname);
+    createParams.append('users[0][email]', email);
+    createParams.append('users[0][auth]', 'manual');
+
+    const { response: createResp, data: createData } = await postToMoodle(createParams);
+
+    if (!createResp.ok) {
+      return res.status(createResp.status).json({ error: createData?.message || 'Moodle error' });
+    }
+
+    return res.json({ created: true, result: createData });
   } catch (error) {
     console.error('Error creating Moodle user:', error);
     return res.status(500).json({ error: error.message });
