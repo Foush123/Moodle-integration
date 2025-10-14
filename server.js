@@ -183,6 +183,73 @@ app.get('/api/moodle-siteinfo', async (req, res) => {
   }
 });
 
+// Enroll a user into a Moodle course (manual enrol method)
+app.post('/api/enroll', async (req, res) => {
+  try {
+    const { username, userid, courseid, roleid } = req.body || {};
+
+    if (!courseid) {
+      return res.status(400).json({ error: 'Missing required field: courseid' });
+    }
+    if (!username && !userid) {
+      return res.status(400).json({ error: 'Provide either username or userid' });
+    }
+
+    // Resolve user id if username provided
+    let resolvedUserId = userid;
+    if (!resolvedUserId && username) {
+      const lookupParams = new URLSearchParams();
+      lookupParams.append('wstoken', WS_TOKEN);
+      lookupParams.append('wsfunction', 'core_user_get_users_by_field');
+      lookupParams.append('moodlewsrestformat', 'json');
+      lookupParams.append('field', 'username');
+      lookupParams.append('values[0]', username);
+
+      const lookupResp = await fetch(MOODLE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: lookupParams.toString(),
+      });
+      const lookupData = await lookupResp.json();
+      if (lookupData && lookupData.exception) {
+        return res.status(400).json({ error: lookupData.message || 'Moodle lookup error', details: lookupData });
+      }
+      if (!Array.isArray(lookupData) || lookupData.length === 0 || !lookupData[0]?.id) {
+        return res.status(404).json({ error: 'User not found in Moodle by username' });
+      }
+      resolvedUserId = lookupData[0].id;
+    }
+
+    // Default student role id in Moodle is typically 5, allow override
+    const effectiveRoleId = roleid ?? 5;
+
+    const enrolParams = new URLSearchParams();
+    enrolParams.append('wstoken', WS_TOKEN);
+    enrolParams.append('wsfunction', 'enrol_manual_enrol_users');
+    enrolParams.append('moodlewsrestformat', 'json');
+    enrolParams.append('enrolments[0][roleid]', String(effectiveRoleId));
+    enrolParams.append('enrolments[0][userid]', String(resolvedUserId));
+    enrolParams.append('enrolments[0][courseid]', String(courseid));
+
+    const enrolResp = await fetch(MOODLE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: enrolParams.toString(),
+    });
+    const enrolData = await enrolResp.json();
+
+    // Success returns empty object {}, errors return exception structure
+    if (enrolData && enrolData.exception) {
+      return res.status(400).json({ error: enrolData.message || 'Moodle enrol error', details: enrolData });
+    }
+
+    return res.json({ enrolled: true, userid: Number(resolvedUserId), courseid: Number(courseid), roleid: Number(effectiveRoleId) });
+  } catch (error) {
+    console.error('Error enrolling user into course:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
