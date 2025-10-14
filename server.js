@@ -190,7 +190,7 @@ app.get('/api/moodle-siteinfo', async (req, res) => {
 // Lightweight login: resolves Moodle user by username (idempotent, no password check here)
 app.post('/api/login', async (req, res) => {
   try {
-    let { username, password } = req.body || {};
+    let { username, password, service } = req.body || {};
     if (typeof username === 'string') username = username.trim().toLowerCase();
     if (!username || !password) {
       return res.status(400).json({ error: 'Missing username or password' });
@@ -200,7 +200,7 @@ app.post('/api/login', async (req, res) => {
     const tokenParams = new URLSearchParams();
     tokenParams.append('username', username);
     tokenParams.append('password', password);
-    tokenParams.append('service', USER_SERVICE);
+    tokenParams.append('service', service || USER_SERVICE);
 
     const tokenResp = await fetch(`${MOODLE_TOKEN_URL}?${tokenParams.toString()}`, { method: 'GET' });
     const tokenData = await tokenResp.json().catch(async () => {
@@ -216,7 +216,7 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ error: 'Invalid response from Moodle token endpoint', details: tokenData });
     }
     if (tokenData.error) {
-      return res.status(401).json({ error: tokenData.error, details: tokenData });
+      return res.status(401).json({ error: tokenData.error, details: tokenData, hint: 'Verify external service shortname, enabled status, and user access.' });
     }
 
     const userToken = tokenData.token;
@@ -241,6 +241,35 @@ app.post('/api/login', async (req, res) => {
     return res.json({ token: userToken, user: siteData });
   } catch (error) {
     console.error('Error during login:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Login using a pre-generated Moodle token (Manage tokens) and return profile
+app.post('/api/login-with-token', async (req, res) => {
+  try {
+    const { token } = req.body || {};
+    if (!token) {
+      return res.status(400).json({ error: 'Missing token' });
+    }
+
+    const siteParams = new URLSearchParams();
+    siteParams.append('wstoken', token);
+    siteParams.append('wsfunction', 'core_webservice_get_site_info');
+    siteParams.append('moodlewsrestformat', 'json');
+
+    const siteResp = await fetch(MOODLE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: siteParams.toString(),
+    });
+    const siteData = await siteResp.json();
+    if (!siteResp.ok || (siteData && siteData.exception)) {
+      return res.status(siteResp.status || 400).json({ error: siteData?.message || 'Invalid token', details: siteData });
+    }
+    return res.json({ token, user: siteData });
+  } catch (error) {
+    console.error('Error during token login:', error);
     res.status(500).json({ error: error.message });
   }
 });
