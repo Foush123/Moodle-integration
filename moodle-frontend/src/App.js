@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 
 function Navbar() {
   return (
@@ -76,7 +76,7 @@ function CourseGrid() {
               {course.idnumber && <p><strong>ID Number:</strong> {course.idnumber}</p>}
               {course.startdate && <p><strong>Start Date:</strong> {new Date(course.startdate * 1000).toLocaleDateString()}</p>}
             </div>
-            <button style={{marginTop:12,width:'100%',background:'#2563eb',color:'#fff',padding:'10px 12px',border:'none',borderRadius:10,cursor:'pointer'}}>View Course</button>
+            <Link to={`/courses/${course.id}`} state={{ title: course.fullname }} style={{display:'inline-block',marginTop:12,width:'100%',textAlign:'center',background:'#2563eb',color:'#fff',padding:'10px 12px',border:'none',borderRadius:10,cursor:'pointer',textDecoration:'none'}}>View details</Link>
           </div>
         ))}
       </div>
@@ -149,11 +149,77 @@ function Register() {
   );
 }
 
+function CourseDetails() {
+  const { id } = useParams();
+  const location = useLocation();
+  const titleFromState = location.state?.title;
+  const [course, setCourse] = useState(null);
+  const [sections, setSections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const [metaRes, contentsRes] = await Promise.all([
+          fetch(`http://localhost:5000/api/courses/${id}`),
+          fetch(`http://localhost:5000/api/courses/${id}/contents`),
+        ]);
+        const meta = await metaRes.json();
+        const contents = await contentsRes.json();
+        if (meta?.exception) throw new Error(meta.message);
+        if (contents?.exception) throw new Error(contents.message);
+        setCourse(meta?.courses?.[0] || null);
+        setSections(Array.isArray(contents) ? contents : []);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [id]);
+
+  return (
+    <div>
+      <Navbar />
+      <div style={{maxWidth:1100,margin:'0 auto',padding:24}}>
+        <h2 style={{marginTop:0}}>{titleFromState || course?.fullname || 'Course details'}</h2>
+        {loading && <div>Loading course...</div>}
+        {error && <div style={{color:'#dc2626'}}>{error}</div>}
+        {!loading && !error && (
+          <div>
+            {sections.map((section) => (
+              <div key={section.id} style={{marginBottom:16,border:'1px solid #e5e7eb',borderRadius:14,padding:16}}>
+                <div style={{fontWeight:600,marginBottom:8}}>{section.name || `Section ${section.section}`}</div>
+                {Array.isArray(section.modules) && section.modules.length > 0 ? (
+                  <ul style={{margin:0,paddingLeft:18}}>
+                    {section.modules.map((m) => (
+                      <li key={m.id} style={{margin:'6px 0'}}>
+                        <span style={{fontWeight:600}}>{m.name}</span>
+                        <span style={{color:'#64748b'}}> — {m.modname}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div style={{color:'#64748b'}}>No activities in this section.</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/courses/:id" element={<CourseDetails />} />
     </Routes>
   );
 }

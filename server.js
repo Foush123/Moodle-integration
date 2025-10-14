@@ -104,6 +104,62 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'Backend is running' });
 });
 
+// Get a single course by id (basic metadata)
+app.get('/api/courses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const params = new URLSearchParams();
+    params.append('wstoken', WS_TOKEN);
+    params.append('wsfunction', 'core_course_get_courses_by_field');
+    params.append('moodlewsrestformat', 'json');
+    params.append('field', 'id');
+    params.append('value', id);
+
+    const response = await fetch(MOODLE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await response.json();
+    if (data && data.exception) {
+      return res.status(400).json({ error: data.message, details: data });
+    }
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching course:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get course sections and activities
+app.get('/api/courses/:id/contents', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const params = new URLSearchParams();
+    params.append('wstoken', WS_TOKEN);
+    params.append('wsfunction', 'core_course_get_contents');
+    params.append('moodlewsrestformat', 'json');
+    params.append('courseid', id);
+    // include section/module details
+    params.append('options[0][name]', 'includestealthmodules');
+    params.append('options[0][value]', '1');
+
+    const response = await fetch(MOODLE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await response.json();
+    if (data && data.exception) {
+      return res.status(400).json({ error: data.message, details: data });
+    }
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching course contents:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Diagnostics: verify REST token/service and user context
 app.get('/api/moodle-siteinfo', async (req, res) => {
   try {
