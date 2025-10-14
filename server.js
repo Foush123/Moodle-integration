@@ -104,6 +104,29 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'Backend is running' });
 });
 
+// Diagnostics: verify REST token/service and user context
+app.get('/api/moodle-siteinfo', async (req, res) => {
+  try {
+    const params = new URLSearchParams();
+    params.append('wstoken', WS_TOKEN);
+    params.append('wsfunction', 'core_webservice_get_site_info');
+    params.append('moodlewsrestformat', 'json');
+    const response = await fetch(MOODLE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await response.json();
+    if (data && data.exception) {
+      return res.status(400).json({ error: data.message, details: data });
+    }
+    res.json(data);
+  } catch (error) {
+    console.error('Error calling site info:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
