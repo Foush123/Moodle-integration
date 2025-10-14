@@ -162,31 +162,22 @@ function Register() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed');
-      // Auto sign-in after creating account (resolve full profile)
-      // Add a small delay to ensure user creation is complete
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const loginRes = await fetch('http://localhost:5000/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // Use the same password the user registered with
-        body: JSON.stringify({ username: normalized.username, password: normalized.password }),
-      });
-      const loginData = await loginRes.json();
-      if (loginRes.ok) {
+      // If backend returned the created user, sign-in locally immediately
+      if (data?.user) {
         setStoredUser({
-          id: loginData?.user?.userid || loginData?.user?.id,
-          username: loginData?.user?.username,
-          firstname: loginData?.user?.firstname,
-          lastname: loginData?.user?.lastname,
-          token: loginData?.token,
+          id: data.user.id,
+          username: data.user.username,
+          firstname: data.user.firstname,
+          lastname: data.user.lastname,
+          token: `mock_token_${data.user.id}`,
         });
         setSuccess('Account created and signed in');
         setTimeout(() => navigate('/'), 1000);
-      } else {
-        setSuccess(`Account created. ${loginData?.error || 'Please login manually.'}`);
-        setTimeout(() => navigate('/login'), 2000);
+        return;
       }
+      // Fallback to manual login page
+      setSuccess('Account created. Please login.');
+      setTimeout(() => navigate('/login'), 1500);
     } catch (err) {
       setError(err.message);
     } finally {

@@ -79,7 +79,39 @@ app.post('/api/register', async (req, res) => {
       return res.status(500).json({ error: 'Unexpected Moodle response', details: createData });
     }
 
-    return res.json({ created: true, id: createData[0].id });
+    // 3) Retry-fetch the created user by username (Moodle can be eventually consistent)
+    const fetchUserByUsername = async () => {
+      const p = new URLSearchParams();
+      p.append('wstoken', WS_TOKEN);
+      p.append('wsfunction', 'core_user_get_users_by_field');
+      p.append('moodlewsrestformat', 'json');
+      p.append('field', 'username');
+      p.append('values[0]', username);
+      const resp = await fetch(MOODLE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: p.toString(),
+      });
+      return resp.json();
+    };
+
+    let createdUser = null;
+    const delaysMs = [200, 400, 800, 1200, 1600];
+    for (let i = 0; i < delaysMs.length; i++) {
+      const data = await fetchUserByUsername();
+      if (Array.isArray(data) && data.length > 0) {
+        createdUser = data[0];
+        break;
+      }
+      await new Promise(r => setTimeout(r, delaysMs[i]));
+    }
+
+    if (!createdUser) {
+      // Fallback: return created id only
+      return res.json({ created: true, id: createData[0].id });
+    }
+
+    return res.json({ created: true, id: createData[0].id, user: createdUser });
   } catch (error) {
     console.error('Error creating Moodle user:', error);
     return res.status(500).json({ error: error.message });
