@@ -35,10 +35,6 @@ The instructions are tailored for Windows PowerShell and use npm.
 
 1) Clone or extract this repository, then open PowerShell in the project root:
 
-```bash
-cd C:\Users\Administrator\Downloads\Moodle-integration
-```
-
 2) Install backend dependencies:
 
 ```bash
@@ -52,38 +48,13 @@ cd .\moodle-frontend
 npm install
 ```
 
-4) Create environment files (optional but recommended):
 
-- Backend (project root): create `.env` with values appropriate to your deployment
-
-```bash
-# Example .env (root)
-PORT=4000
-NODE_ENV=development
-# If you implement LTI 1.3, you will also need issuer, client IDs, keys, etc.
-# LTI_ISSUER=https://your-moodle.example.com
-# LTI_CLIENT_ID=...
-# LTI_DEPLOYMENT_ID=...
-# LTI_AUTHORIZATION_ENDPOINT=...
-# LTI_TOKEN_ENDPOINT=...
-# LTI_JWKS_ENDPOINT=...
-# PRIVATE_KEY_PEM="..."
-```
-
-- Frontend (`moodle-frontend/`): create `.env` with the backend URL the React app should call
-
-```bash
-# Example moodle-frontend/.env
-REACT_APP_API_BASE=http://localhost:4000
-PORT=3000
-```
-
-5) Run backend and frontend (two terminals):
+4) Run backend and frontend (two terminals):
 
 - Terminal A (root):
 
 ```bash
-cd C:\Users\Administrator\Downloads\Moodle-integration
+cd Moodle-integration
 npm start
 # or, if your package.json uses a different script, run: node server.js
 ```
@@ -91,25 +62,12 @@ npm start
 - Terminal B (frontend):
 
 ```bash
-cd C:\Users\Administrator\Downloads\Moodle-integration\moodle-frontend
+cd Moodle-integration\moodle-frontend
 npm start
 ```
 
 By default, the frontend will be at `http://localhost:3000` and the backend at `http://localhost:4000` (adjust to your ports).
 
-
-### Production Deployment (high-level)
-
-- Deploy the Node.js backend behind HTTPS (reverse proxy with Nginx/Apache or a managed platform).
-- Build the React frontend and serve via a static host or from the backend.
-
-```bash
-cd moodle-frontend
-npm run build
-# serve build/ via your chosen web server or configure the backend to serve static files
-```
-
-- Ensure all callback/launch URLs referenced in Moodle use HTTPS and are reachable from Moodle.
 
 
 ## Enabling the Integration in Moodle
@@ -235,13 +193,6 @@ Security notes:
 - Production: use your public HTTPS domains and update Moodle tool URLs accordingly
 
 
-## Troubleshooting
-
-- Blank iframe or “refused to connect”: adjust `X-Frame-Options` and `Content-Security-Policy` to allow Moodle origin to embed your app
-- LTI login loop or error: verify issuer, client ID, deployment ID, and that your backend’s time is correct (JWT expiry/nbf)
-- 401/403 from backend: check CORS, cookies/samesite, and auth headers
-- REST token calls failing: confirm `wsfunction` name, token permissions, and that REST protocol is enabled
-
 
 ## Security Considerations
 
@@ -250,14 +201,5 @@ Security notes:
 - Store secrets in environment variables or a secure vault
 - Apply least-privilege for Moodle web service tokens
 
-
-## Support
-
-If you run into issues enabling the integration in Moodle, capture:
-- Moodle version, error messages, and screenshots where possible
-- The exact tool configuration (redact secrets)
-- Backend logs (sanitize tokens/keys)
-
-Then open an issue in your tracker or contact the maintainer.
 
 
