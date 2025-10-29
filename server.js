@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 
 const app = express();
 const PORT = 5000;
@@ -8,11 +7,11 @@ const PORT = 5000;
 app.use(cors());
 app.use(express.json());
 
-const MOODLE_URL = process.env.MOODLE_URL || 'http://localhost/moodle/webservice/rest/server.php';
-const MOODLE_TOKEN_URL = process.env.MOODLE_TOKEN_URL || 'http://localhost/moodle/login/token.php';
-const WS_TOKEN = process.env.MOODLE_WS_TOKEN || 'a2cd2377ff57c4d85ee67c58544ee941';
+const MOODLE_URL = 'http://localhost/moodle/webservice/rest/server.php';
+const MOODLE_TOKEN_URL = 'http://localhost/moodle/login/token.php';
+const WS_TOKEN = 'a2cd2377ff57c4d85ee67c58544ee941';
 // External service shortname to request user tokens. Ensure this service exists and includes needed functions
-const USER_SERVICE = process.env.MOODLE_USER_SERVICE || 'moodle_mobile_app';
+const USER_SERVICE = 'moodle_mobile_app';
 
 // Create Moodle user (idempotent by username)
 app.post('/api/register', async (req, res) => {
@@ -220,21 +219,18 @@ app.get('/api/moodle-siteinfo', async (req, res) => {
   }
 });
 
-// Lightweight login: resolves Moodle user by username (idempotent, no password check here)
+// Lightweight login: resolves Moodle user by username or email (no password verification here)
 app.post('/api/login', async (req, res) => {
   try {
-    let { username, password, service } = req.body || {};
-    if (typeof username === 'string') username = username.trim();
-    if (!username || !password) {
+    const { username: rawUsername, password } = req.body || {};
+    if (!rawUsername || !password) {
       return res.status(400).json({ error: 'Missing username or password' });
     }
 
-    // Since token.php isn't working with your service setup, 
-    // we'll use the admin token to verify the user exists and return a mock token
-    // In production, you'd want to set up proper user authentication
-    
-    // 1) Check if user exists using admin token (try username, then email, then idnumber)
-    const tryLookupByField = async (field, value) => {
+    const trimmed = String(rawUsername).trim();
+    const lower = trimmed.toLowerCase();
+
+    const tryLookup = async (field, value) => {
       const p = new URLSearchParams();
       p.append('wstoken', WS_TOKEN);
       p.append('wsfunction', 'core_user_get_users_by_field');
@@ -246,57 +242,55 @@ app.post('/api/login', async (req, res) => {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: p.toString(),
       });
-      return resp.json();
+      const data = await resp.json();
+      if (data && data.exception) {
+        return { error: data };
+      }
+      if (Array.isArray(data) && data.length > 0) {
+        return { user: data[0] };
+      }
+      return { user: null };
     };
 
-    // Moodle usernames are case-insensitive, but keep original in case site uses caseful conventions
-    const candidates = [];
-    candidates.push({ field: 'username', value: username });
-    if (username.includes('@')) candidates.push({ field: 'email', value: username.toLowerCase() });
-    // If username looks numeric, it might be idnumber in your site
-    if (/^[A-Za-z0-9._-]+$/.test(username)) candidates.push({ field: 'idnumber', value: username });
+    // Determine lookup strategy: email vs username
+    const isEmail = trimmed.includes('@');
+    const attempts = [];
+    if (isEmail) {
+      attempts.push(['email', trimmed]);
+    } else {
+      // Try exact username then lowercased (some sites enforce lowercase, others not)
+      attempts.push(['username', trimmed]);
+      if (lower !== trimmed) attempts.push(['username', lower]);
+    }
 
-    let user = null;
-    let lastError = null;
-    for (const c of candidates) {
-      try {
-        const data = await tryLookupByField(c.field, c.value);
-        if (data && data.exception) {
-          lastError = data;
-          continue;
-        }
-        if (Array.isArray(data) && data.length > 0) {
-          user = data[0];
-          break;
-        }
-      } catch (e) {
-        lastError = { message: e.message };
+    let found = null;
+    for (const [field, value] of attempts) {
+      const { user, error } = await tryLookup(field, value);
+      if (error) {
+        return res.status(400).json({ error: error.message || 'User lookup failed', details: error });
+      }
+      if (user) {
+        found = user;
+        break;
       }
     }
 
-    if (!user) {
+    if (!found) {
       return res.status(404).json({
-        error: `User not found in Moodle by username/email/idnumber`,
-        submitted: username,
-        diagnostics: lastError || undefined,
-        hint: 'Verify exact username in Site administration → Users → Browse list of users',
+        error: `User not found in Moodle for '${trimmed}'.`,
+        hint: 'If you log in to Moodle with email, try using the same email here, or ensure the username matches exactly.'
       });
     }
-    
-    // 2) Return user info with a mock token (since we can't get real user tokens)
-    // In a real setup, you'd either:
-    // - Fix the service configuration to allow token.php
-    // - Use a different auth method
-    // - Generate your own session tokens
-    return res.json({ 
-      token: `mock_token_${user.id}_${Date.now()}`, 
+
+    return res.json({
+      token: `mock_token_${found.id}_${Date.now()}`,
       user: {
-        userid: user.id,
-        username: user.username,
-        firstname: user.firstname,
-        lastname: user.lastname,
-        fullname: user.fullname,
-        email: user.email
+        userid: found.id,
+        username: found.username,
+        firstname: found.firstname,
+        lastname: found.lastname,
+        fullname: found.fullname,
+        email: found.email
       }
     });
   } catch (error) {
@@ -400,13 +394,6 @@ app.post('/api/enroll', async (req, res) => {
     console.error('Error enrolling user into course:', error);
     res.status(500).json({ error: error.message });
   }
-});
-
-// Serve frontend build if present
-const buildDir = path.join(__dirname, 'moodle-frontend', 'build');
-app.use(express.static(buildDir));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(buildDir, 'index.html'));
 });
 
 app.listen(PORT, () => {
