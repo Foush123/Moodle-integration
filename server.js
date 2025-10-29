@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 
 const app = express();
 const PORT = 5000;
@@ -7,11 +8,11 @@ const PORT = 5000;
 app.use(cors());
 app.use(express.json());
 
-const MOODLE_URL = 'http://localhost/moodle/webservice/rest/server.php';
-const MOODLE_TOKEN_URL = 'http://localhost/moodle/login/token.php';
-const WS_TOKEN = 'a2cd2377ff57c4d85ee67c58544ee941';
+const MOODLE_URL = process.env.MOODLE_URL || 'http://localhost/moodle/webservice/rest/server.php';
+const MOODLE_TOKEN_URL = process.env.MOODLE_TOKEN_URL || 'http://localhost/moodle/login/token.php';
+const WS_TOKEN = process.env.MOODLE_WS_TOKEN || 'a2cd2377ff57c4d85ee67c58544ee941';
 // External service shortname to request user tokens. Ensure this service exists and includes needed functions
-const USER_SERVICE = 'moodle_mobile_app';
+const USER_SERVICE = process.env.MOODLE_USER_SERVICE || 'moodle_mobile_app';
 
 // Create Moodle user (idempotent by username)
 app.post('/api/register', async (req, res) => {
@@ -399,6 +400,13 @@ app.post('/api/enroll', async (req, res) => {
     console.error('Error enrolling user into course:', error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// Serve frontend build if present
+const buildDir = path.join(__dirname, 'moodle-frontend', 'build');
+app.use(express.static(buildDir));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(buildDir, 'index.html'));
 });
 
 app.listen(PORT, () => {
