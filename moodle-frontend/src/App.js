@@ -155,6 +155,9 @@ function Register() {
     setSuccess('');
     try {
       const normalized = { ...form, username: form.username.trim().toLowerCase() };
+      if (!normalized.username) {
+        throw new Error('Please enter a valid username');
+      }
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -224,6 +227,9 @@ function Login() {
     setError('');
     try {
       const payload = { username: username.trim().toLowerCase(), password };
+      if (!payload.username) {
+        throw new Error('Please enter a valid username');
+      }
       if (service.trim()) payload.service = service.trim();
       const res = await fetch('/api/login', {
         method: 'POST',
