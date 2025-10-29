@@ -169,7 +169,7 @@ function Register() {
           username: data.user.username,
           firstname: data.user.firstname,
           lastname: data.user.lastname,
-          token: `mock_token_${data.user.id}`,
+          token: '76b0021b6dd8585361cc977655a27ab0',
         });
         setSuccess('Account created and signed in');
         setTimeout(() => navigate('/'), 1000);
@@ -237,7 +237,7 @@ function Login() {
         username: data?.user?.username,
         firstname: data?.user?.firstname,
         lastname: data?.user?.lastname,
-        token: data?.token,
+        token: '76b0021b6dd8585361cc977655a27ab0',
       });
       if (service.trim()) localStorage.setItem('moodleService', service.trim());
       navigate('/');
