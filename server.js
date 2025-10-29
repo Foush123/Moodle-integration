@@ -219,78 +219,61 @@ app.get('/api/moodle-siteinfo', async (req, res) => {
   }
 });
 
-// Lightweight login: resolves Moodle user by username or email (no password verification here)
+// Lightweight login: resolves Moodle user by username (idempotent, no password check here)
 app.post('/api/login', async (req, res) => {
   try {
-    const { username: rawUsername, password } = req.body || {};
-    if (!rawUsername || !password) {
+    let { username, password, service } = req.body || {};
+    if (typeof username === 'string') username = username.trim().toLowerCase();
+    if (!username || !password) {
       return res.status(400).json({ error: 'Missing username or password' });
     }
 
-    const trimmed = String(rawUsername).trim();
-    const lower = trimmed.toLowerCase();
+    // Since token.php isn't working with your service setup, 
+    // we'll use the admin token to verify the user exists and return a mock token
+    // In production, you'd want to set up proper user authentication
+    
+    // 1) Check if user exists using admin token
+    const checkParams = new URLSearchParams();
+    checkParams.append('wstoken', WS_TOKEN);
+    checkParams.append('wsfunction', 'core_user_get_users_by_field');
+    checkParams.append('moodlewsrestformat', 'json');
+    checkParams.append('field', 'username');
+    checkParams.append('values[0]', username);
 
-    const tryLookup = async (field, value) => {
-      const p = new URLSearchParams();
-      p.append('wstoken', WS_TOKEN);
-      p.append('wsfunction', 'core_user_get_users_by_field');
-      p.append('moodlewsrestformat', 'json');
-      p.append('field', field);
-      p.append('values[0]', value);
-      const resp = await fetch(MOODLE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: p.toString(),
-      });
-      const data = await resp.json();
-      if (data && data.exception) {
-        return { error: data };
-      }
-      if (Array.isArray(data) && data.length > 0) {
-        return { user: data[0] };
-      }
-      return { user: null };
-    };
-
-    // Determine lookup strategy: email vs username
-    const isEmail = trimmed.includes('@');
-    const attempts = [];
-    if (isEmail) {
-      attempts.push(['email', trimmed]);
-    } else {
-      // Try exact username then lowercased (some sites enforce lowercase, others not)
-      attempts.push(['username', trimmed]);
-      if (lower !== trimmed) attempts.push(['username', lower]);
+    const checkResp = await fetch(MOODLE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: checkParams.toString(),
+    });
+    const checkData = await checkResp.json();
+    
+    if (checkData && checkData.exception) {
+      return res.status(400).json({ error: checkData.message || 'User lookup failed', details: checkData });
     }
-
-    let found = null;
-    for (const [field, value] of attempts) {
-      const { user, error } = await tryLookup(field, value);
-      if (error) {
-        return res.status(400).json({ error: error.message || 'User lookup failed', details: error });
-      }
-      if (user) {
-        found = user;
-        break;
-      }
-    }
-
-    if (!found) {
-      return res.status(404).json({
-        error: `User not found in Moodle for '${trimmed}'.`,
-        hint: 'If you log in to Moodle with email, try using the same email here, or ensure the username matches exactly.'
+    if (!Array.isArray(checkData) || checkData.length === 0) {
+      return res.status(404).json({ 
+        error: `User '${username}' not found in Moodle. Please check the username or create the account first.`,
+        username: username,
+        hint: 'Make sure the user was created successfully in Moodle'
       });
     }
 
-    return res.json({
-      token: `mock_token_${found.id}_${Date.now()}`,
+    const user = checkData[0];
+    
+    // 2) Return user info with a mock token (since we can't get real user tokens)
+    // In a real setup, you'd either:
+    // - Fix the service configuration to allow token.php
+    // - Use a different auth method
+    // - Generate your own session tokens
+    return res.json({ 
+      token: `mock_token_${user.id}_${Date.now()}`, 
       user: {
-        userid: found.id,
-        username: found.username,
-        firstname: found.firstname,
-        lastname: found.lastname,
-        fullname: found.fullname,
-        email: found.email
+        userid: user.id,
+        username: user.username,
+        firstname: user.firstname,
+        lastname: user.lastname,
+        fullname: user.fullname,
+        email: user.email
       }
     });
   } catch (error) {
