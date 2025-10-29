@@ -13,6 +13,47 @@ const WS_TOKEN = 'a2cd2377ff57c4d85ee67c58544ee941';
 // External service shortname to request user tokens. Ensure this service exists and includes needed functions
 const USER_SERVICE = 'moodle_mobile_app';
 
+// Helper: find a Moodle user by username (case variations) or email
+async function findMoodleUser({ username, email }) {
+  const attempts = [];
+  if (username && typeof username === 'string') {
+    const trimmed = username.trim();
+    if (trimmed) {
+      attempts.push({ field: 'username', value: trimmed });
+      // Also try lowercased variant because some setups normalize usernames
+      const lower = trimmed.toLowerCase();
+      if (lower !== trimmed) attempts.push({ field: 'username', value: lower });
+    }
+  }
+  if (email && typeof email === 'string') {
+    const e = email.trim();
+    if (e) attempts.push({ field: 'email', value: e });
+  }
+
+  for (const { field, value } of attempts) {
+    const params = new URLSearchParams();
+    params.append('wstoken', WS_TOKEN);
+    params.append('wsfunction', 'core_user_get_users_by_field');
+    params.append('moodlewsrestformat', 'json');
+    params.append('field', field);
+    params.append('values[0]', value);
+    const resp = await fetch(MOODLE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await resp.json();
+    if (data && data.exception) {
+      // Surface the first exception immediately
+      return { error: data };
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      return { user: data[0] };
+    }
+  }
+  return { user: null };
+}
+
 // Create Moodle user (idempotent by username)
 app.post('/api/register', async (req, res) => {
   try {
@@ -222,8 +263,8 @@ app.get('/api/moodle-siteinfo', async (req, res) => {
 // Lightweight login: resolves Moodle user by username (idempotent, no password check here)
 app.post('/api/login', async (req, res) => {
   try {
-    let { username, password, service } = req.body || {};
-    if (typeof username === 'string') username = username.trim().toLowerCase();
+    let { username, password, service, email } = req.body || {};
+    if (typeof username === 'string') username = username.trim();
     if (!username || !password) {
       return res.status(400).json({ error: 'Missing username or password' });
     }
@@ -233,32 +274,18 @@ app.post('/api/login', async (req, res) => {
     // In production, you'd want to set up proper user authentication
     
     // 1) Check if user exists using admin token
-    const checkParams = new URLSearchParams();
-    checkParams.append('wstoken', WS_TOKEN);
-    checkParams.append('wsfunction', 'core_user_get_users_by_field');
-    checkParams.append('moodlewsrestformat', 'json');
-    checkParams.append('field', 'username');
-    checkParams.append('values[0]', username);
-
-    const checkResp = await fetch(MOODLE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: checkParams.toString(),
-    });
-    const checkData = await checkResp.json();
-    
-    if (checkData && checkData.exception) {
-      return res.status(400).json({ error: checkData.message || 'User lookup failed', details: checkData });
+    const { user, error } = await findMoodleUser({ username, email });
+    if (error) {
+      return res.status(400).json({ error: error.message || 'User lookup failed', details: error });
     }
-    if (!Array.isArray(checkData) || checkData.length === 0) {
+    if (!user) {
       return res.status(404).json({ 
-        error: `User '${username}' not found in Moodle. Please check the username or create the account first.`,
+        error: `User '${username}' not found in Moodle.`,
         username: username,
-        hint: 'Make sure the user was created successfully in Moodle'
+        hint: 'Try exact username casing or provide email as fallback'
       });
     }
-
-    const user = checkData[0];
+    
     
     // 2) Return user info with a mock token (since we can't get real user tokens)
     // In a real setup, you'd either:
@@ -314,8 +341,8 @@ app.post('/api/login-with-token', async (req, res) => {
 // Enroll a user into a Moodle course (manual enrol method)
 app.post('/api/enroll', async (req, res) => {
   try {
-    let { username, userid, courseid, roleid } = req.body || {};
-    if (typeof username === 'string') username = username.trim().toLowerCase();
+    let { username, userid, courseid, roleid, email } = req.body || {};
+    if (typeof username === 'string') username = username.trim();
 
     if (!courseid) {
       return res.status(400).json({ error: 'Missing required field: courseid' });
@@ -327,26 +354,14 @@ app.post('/api/enroll', async (req, res) => {
     // Resolve user id if username provided
     let resolvedUserId = userid;
     if (!resolvedUserId && username) {
-      const lookupParams = new URLSearchParams();
-      lookupParams.append('wstoken', WS_TOKEN);
-      lookupParams.append('wsfunction', 'core_user_get_users_by_field');
-      lookupParams.append('moodlewsrestformat', 'json');
-      lookupParams.append('field', 'username');
-      lookupParams.append('values[0]', username);
-
-      const lookupResp = await fetch(MOODLE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: lookupParams.toString(),
-      });
-      const lookupData = await lookupResp.json();
-      if (lookupData && lookupData.exception) {
-        return res.status(400).json({ error: lookupData.message || 'Moodle lookup error', details: lookupData });
+      const found = await findMoodleUser({ username, email });
+      if (found.error) {
+        return res.status(400).json({ error: found.error.message || 'Moodle lookup error', details: found.error });
       }
-      if (!Array.isArray(lookupData) || lookupData.length === 0 || !lookupData[0]?.id) {
-        return res.status(404).json({ error: 'User not found in Moodle by username' });
+      if (!found.user?.id) {
+        return res.status(404).json({ error: 'User not found in Moodle by username/email' });
       }
-      resolvedUserId = lookupData[0].id;
+      resolvedUserId = found.user.id;
     }
 
     // Default student role id in Moodle is typically 5, allow override
