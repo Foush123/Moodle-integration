@@ -89,7 +89,7 @@ function CourseGrid() {
     const fetchCourses = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/moodle-courses');
+        const response = await fetch('/api/moodle-courses');
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
         setCourses(Array.isArray(result) ? result : []);
@@ -155,7 +155,7 @@ function Register() {
     setSuccess('');
     try {
       const normalized = { ...form, username: form.username.trim().toLowerCase() };
-      const res = await fetch('http://localhost:5000/api/register', {
+      const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(normalized),
@@ -225,7 +225,7 @@ function Login() {
     try {
       const payload = { username: username.trim().toLowerCase(), password };
       if (service.trim()) payload.service = service.trim();
-      const res = await fetch('http://localhost:5000/api/login', {
+      const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -288,8 +288,8 @@ function CourseDetails() {
       try {
         setLoading(true);
         const [metaRes, contentsRes] = await Promise.all([
-          fetch(`http://localhost:5000/api/courses/${id}`),
-          fetch(`http://localhost:5000/api/courses/${id}/contents`),
+          fetch(`/api/courses/${id}`),
+          fetch(`/api/courses/${id}/contents`),
         ]);
         const meta = await metaRes.json();
         const contents = await contentsRes.json();
@@ -326,7 +326,7 @@ function CourseDetails() {
                         setEnrolling(true);
                         const body = { username: currentUser.username, courseid: Number(id) };
                         if (enrollRoleId) body.roleid = Number(enrollRoleId);
-                        const res = await fetch('http://localhost:5000/api/enroll', {
+                        const res = await fetch('/api/enroll', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify(body),
@@ -380,7 +380,7 @@ function CourseDetails() {
                           courseid: Number(id),
                         };
                         if (enrollRoleId) body.roleid = Number(enrollRoleId);
-                        const res = await fetch('http://localhost:5000/api/enroll', {
+                        const res = await fetch('/api/enroll', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify(body),
@@ -408,12 +408,45 @@ function CourseDetails() {
                 <div style={{fontWeight:600,marginBottom:8}}>{section.name || `Section ${section.section}`}</div>
                 {Array.isArray(section.modules) && section.modules.length > 0 ? (
                   <ul style={{margin:0,paddingLeft:18}}>
-                    {section.modules.map((m) => (
-                      <li key={m.id} style={{margin:'6px 0'}}>
-                        <span style={{fontWeight:600}}>{m.name}</span>
-                        <span style={{color:'#64748b'}}> — {m.modname}</span>
-                      </li>
-                    ))}
+                    {section.modules.map((m) => {
+                      const token = (currentUser && currentUser.token) ? currentUser.token : '76b0021b6dd8585361cc977655a27ab0';
+                      return (
+                        <li key={m.id} style={{margin:'10px 0'}}>
+                          <div>
+                            <div style={{display:'flex',gap:8,alignItems:'baseline',flexWrap:'wrap'}}>
+                              <span style={{fontWeight:600}}>{m.name}</span>
+                              <span style={{color:'#64748b'}}>— {m.modname}</span>
+                              {m.url && (
+                                <a href={m.url} target="_blank" rel="noreferrer" style={{color:'#2563eb'}}>Open</a>
+                              )}
+                            </div>
+                            {m.description && (
+                              <div style={{marginTop:6,color:'#334155'}} dangerouslySetInnerHTML={{ __html: m.description }} />
+                            )}
+                            {Array.isArray(m.contents) && m.contents.length > 0 && (
+                              <div style={{marginTop:6}}>
+                                <div style={{fontSize:12,color:'#64748b',marginBottom:4}}>Files:</div>
+                                <ul style={{margin:0,paddingLeft:18}}>
+                                  {m.contents.map((c) => {
+                                    const hasToken = typeof c.fileurl === 'string' && c.fileurl.includes('token=');
+                                    const urlSep = typeof c.fileurl === 'string' && c.fileurl.includes('?') ? '&' : '?';
+                                    const href = typeof c.fileurl === 'string' ? (hasToken ? c.fileurl : `${c.fileurl}${urlSep}token=${token}`) : '#';
+                                    return (
+                                      <li key={c.fileurl || Math.random()} style={{margin:'4px 0'}}>
+                                        <a href={href} target="_blank" rel="noreferrer" style={{color:'#2563eb'}}>
+                                          {c.filename || c.fileurl || 'Download'}
+                                        </a>
+                                        {c.filesize ? <span style={{color:'#64748b',marginLeft:6}}>({Math.round(c.filesize/1024)} KB)</span> : null}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <div style={{color:'#64748b'}}>No activities in this section.</div>
