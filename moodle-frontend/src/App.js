@@ -1,4 +1,12 @@
 import { useState, useEffect } from 'react';
+
+async function readResponseBody(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    try { return await response.json(); } catch (_) { return 'Invalid JSON from server'; }
+  }
+  try { return await response.text(); } catch (_) { return ''; }
+}
 import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 
 function Navbar() {
@@ -90,8 +98,10 @@ function CourseGrid() {
       try {
         setLoading(true);
         const response = await fetch('/api/moodle-courses');
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const result = await response.json();
+        const body = await readResponseBody(response);
+        if (!response.ok) throw new Error(typeof body === 'string' ? body : (body?.error || `HTTP ${response.status}`));
+        if (typeof body === 'string') throw new Error('Invalid response from server (expected JSON)');
+        const result = body;
         setCourses(Array.isArray(result) ? result : []);
         setError(null);
       } catch (err) {
@@ -163,8 +173,8 @@ function Register() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(normalized),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed');
+      const data = await readResponseBody(res);
+      if (!res.ok) throw new Error(typeof data === 'string' ? data : (data?.error || 'Failed'));
       // If backend returned the created user, sign-in locally immediately
       if (data?.user) {
         setStoredUser({
@@ -236,8 +246,8 @@ function Login() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Login failed');
+      const data = await readResponseBody(res);
+      if (!res.ok) throw new Error(typeof data === 'string' ? data : (data?.error || 'Login failed'));
       setStoredUser({
         id: data?.user?.userid || data?.user?.id,
         username: data?.user?.username,
@@ -297,8 +307,12 @@ function CourseDetails() {
           fetch(`/api/courses/${id}`),
           fetch(`/api/courses/${id}/contents`),
         ]);
-        const meta = await metaRes.json();
-        const contents = await contentsRes.json();
+        const metaBody = await readResponseBody(metaRes);
+        const contentsBody = await readResponseBody(contentsRes);
+        if (!metaRes.ok) throw new Error(typeof metaBody === 'string' ? metaBody : (metaBody?.error || `HTTP ${metaRes.status}`));
+        if (!contentsRes.ok) throw new Error(typeof contentsBody === 'string' ? contentsBody : (contentsBody?.error || `HTTP ${contentsRes.status}`));
+        const meta = typeof metaBody === 'string' ? null : metaBody;
+        const contents = typeof contentsBody === 'string' ? [] : contentsBody;
         if (meta?.exception) throw new Error(meta.message);
         if (contents?.exception) throw new Error(contents.message);
         setCourse(meta?.courses?.[0] || null);
@@ -337,8 +351,8 @@ function CourseDetails() {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify(body),
                         });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data?.error || 'Enrollment failed');
+                        const data = await readResponseBody(res);
+                        if (!res.ok) throw new Error(typeof data === 'string' ? data : (data?.error || 'Enrollment failed'));
                         setEnrollMessage(`Enrolled: user ${data.userid} into course ${data.courseid} (role ${data.roleid})`);
                       } catch (e) {
                         setEnrollMessage(`Error: ${e.message}`);
@@ -391,8 +405,8 @@ function CourseDetails() {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify(body),
                         });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data?.error || 'Enrollment failed');
+                        const data = await readResponseBody(res);
+                        if (!res.ok) throw new Error(typeof data === 'string' ? data : (data?.error || 'Enrollment failed'));
                         setEnrollMessage(`Enrolled: user ${data.userid} into course ${data.courseid} (role ${data.roleid})`);
                       } catch (e) {
                         setEnrollMessage(`Error: ${e.message}`);
