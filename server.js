@@ -223,7 +223,7 @@ app.get('/api/moodle-siteinfo', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   try {
     let { username, password, service } = req.body || {};
-    if (typeof username === 'string') username = username.trim().toLowerCase();
+    if (typeof username === 'string') username = username.trim();
     if (!username || !password) {
       return res.status(400).json({ error: 'Missing username or password' });
     }
@@ -232,33 +232,55 @@ app.post('/api/login', async (req, res) => {
     // we'll use the admin token to verify the user exists and return a mock token
     // In production, you'd want to set up proper user authentication
     
-    // 1) Check if user exists using admin token
-    const checkParams = new URLSearchParams();
-    checkParams.append('wstoken', WS_TOKEN);
-    checkParams.append('wsfunction', 'core_user_get_users_by_field');
-    checkParams.append('moodlewsrestformat', 'json');
-    checkParams.append('field', 'username');
-    checkParams.append('values[0]', username);
+    // 1) Check if user exists using admin token (try username, then email, then idnumber)
+    const tryLookupByField = async (field, value) => {
+      const p = new URLSearchParams();
+      p.append('wstoken', WS_TOKEN);
+      p.append('wsfunction', 'core_user_get_users_by_field');
+      p.append('moodlewsrestformat', 'json');
+      p.append('field', field);
+      p.append('values[0]', value);
+      const resp = await fetch(MOODLE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: p.toString(),
+      });
+      return resp.json();
+    };
 
-    const checkResp = await fetch(MOODLE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: checkParams.toString(),
-    });
-    const checkData = await checkResp.json();
-    
-    if (checkData && checkData.exception) {
-      return res.status(400).json({ error: checkData.message || 'User lookup failed', details: checkData });
+    // Moodle usernames are case-insensitive, but keep original in case site uses caseful conventions
+    const candidates = [];
+    candidates.push({ field: 'username', value: username });
+    if (username.includes('@')) candidates.push({ field: 'email', value: username.toLowerCase() });
+    // If username looks numeric, it might be idnumber in your site
+    if (/^[A-Za-z0-9._-]+$/.test(username)) candidates.push({ field: 'idnumber', value: username });
+
+    let user = null;
+    let lastError = null;
+    for (const c of candidates) {
+      try {
+        const data = await tryLookupByField(c.field, c.value);
+        if (data && data.exception) {
+          lastError = data;
+          continue;
+        }
+        if (Array.isArray(data) && data.length > 0) {
+          user = data[0];
+          break;
+        }
+      } catch (e) {
+        lastError = { message: e.message };
+      }
     }
-    if (!Array.isArray(checkData) || checkData.length === 0) {
-      return res.status(404).json({ 
-        error: `User '${username}' not found in Moodle. Please check the username or create the account first.`,
-        username: username,
-        hint: 'Make sure the user was created successfully in Moodle'
+
+    if (!user) {
+      return res.status(404).json({
+        error: `User not found in Moodle by username/email/idnumber`,
+        submitted: username,
+        diagnostics: lastError || undefined,
+        hint: 'Verify exact username in Site administration → Users → Browse list of users',
       });
     }
-
-    const user = checkData[0];
     
     // 2) Return user info with a mock token (since we can't get real user tokens)
     // In a real setup, you'd either:
